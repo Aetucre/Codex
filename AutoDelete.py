@@ -48,15 +48,18 @@ class AutoDeleteApp:
         controls_frame = ttk.Frame(main_frame)
         controls_frame.pack(fill=tk.X, pady=(12, 0))
 
+        buttons_frame = ttk.Frame(controls_frame)
+        buttons_frame.pack(side=tk.LEFT)
+
         self.start_button = ttk.Button(
-            controls_frame,
+            buttons_frame,
             text="Start",
             command=self.start_deleting,
         )
         self.start_button.pack(side=tk.LEFT)
 
         self.stop_button = ttk.Button(
-            controls_frame,
+            buttons_frame,
             text="Stop",
             command=self.stop_deleting,
             state=tk.DISABLED,
@@ -76,8 +79,15 @@ class AutoDeleteApp:
             to=30.0,
             orient=tk.HORIZONTAL,
             variable=self.speed_var,
+            command=self._update_speed_display,
         )
         self.speed_scale.pack(fill=tk.X, padx=(12, 0))
+
+        self.speed_display = ttk.Label(
+            speed_frame,
+            text=self._format_speed_value(self.speed_var.get()),
+        )
+        self.speed_display.pack(anchor=tk.E, pady=(4, 0))
 
         self.status_var = tk.StringVar(value="Idle")
         status_label = ttk.Label(controls_frame, textvariable=self.status_var)
@@ -112,6 +122,16 @@ class AutoDeleteApp:
 
         interval = max(1, int(1000 / max(0.1, self.speed_var.get())))
         self.root.after(interval, self._delete_one_character)
+
+    def _format_speed_value(self, value: float) -> str:
+        """Return a human-friendly representation of the speed setting."""
+        return f"{value:.1f} chars/sec"
+
+    def _update_speed_display(self, _value: str) -> None:
+        """Update the speed readout label when the user adjusts the slider."""
+        self.speed_display.config(
+            text=self._format_speed_value(self.speed_var.get())
+        )
 
     def _delete_one_character(self) -> None:
         """Remove a single character at the insertion cursor."""
