@@ -89,8 +89,10 @@ class ChatObsidianFormatterApp:
         for idx, btn in enumerate(buttons, start=1):
             if var.get() == idx:
                 btn.configure(style="Selected.TButton")
+                btn.state(["pressed"])
             else:
                 btn.configure(style="TButton")
+                btn.state(["!pressed"])
 
     def _set_heading_level(self, var: tk.IntVar, level: int, buttons: list[ttk.Button]) -> None:
         var.set(level)
