@@ -107,6 +107,7 @@ class TextDeleterApp:
 
         self.text = tk.Text(main_frame, wrap="word")
         self.text.grid(row=1, column=0, sticky="nsew")
+        self.text.bind("<<Modified>>", self._on_text_modified)
 
         status_frame = ttk.Frame(main_frame)
         status_frame.grid(row=2, column=0, sticky="we", pady=(10, 0))
@@ -116,7 +117,10 @@ class TextDeleterApp:
             anchor="w",
         )
         self.status_label.grid(row=0, column=0, sticky="we")
+        self.counts_label = ttk.Label(status_frame, text="Lines: 0  |  Characters: 0")
+        self.counts_label.grid(row=0, column=1, sticky="e")
         status_frame.columnconfigure(0, weight=1)
+        self._update_counts()
 
     def start_deletion(self) -> None:
         """Begin deleting characters from the current cursor position."""
@@ -143,6 +147,7 @@ class TextDeleterApp:
         self.stop_deletion()
         self.text.delete("1.0", tk.END)
         self.status_label.config(text="Cleared.")
+        self._update_counts()
 
     def _schedule_next_delete(self) -> None:
         if not self.deleting:
@@ -176,10 +181,27 @@ class TextDeleterApp:
 
         # Keep the cursor at the same position after deletion.
         self.text.mark_set(tk.INSERT, insert_index)
+        self._update_counts()
         self._schedule_next_delete()
 
     def _update_speed_label(self) -> None:
         self.speed_label.config(text=f"{self.speed_var.get():.1f}")
+
+    def _on_text_modified(self, _event: tk.Event) -> None:
+        if self.text.edit_modified():
+            self._update_counts()
+            self.text.edit_modified(False)
+
+    def _update_counts(self) -> None:
+        text_content = self.text.get("1.0", "end-1c")
+        if text_content:
+            line_count = len(text_content.splitlines())
+        else:
+            line_count = 0
+        char_count = len(text_content)
+        self.counts_label.config(
+            text=f"Lines: {line_count}  |  Characters: {char_count}"
+        )
 
     def _toggle_theme(self) -> None:
         self.dark_mode_var.set(not self.dark_mode_var.get())
