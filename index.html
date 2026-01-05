@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modern Names Catalog</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">20,000 Names — Modern Edition</p>
+          <h1>Explore names by origin, gender, and theme.</h1>
+          <p class="lead">
+            A modern, searchable catalog inspired by 20000-names.com. Filter by
+            origin, gender, or theme to discover the perfect name.
+          </p>
+        </div>
+        <div class="hero-card">
+          <div>
+            <p class="label">Total names</p>
+            <h2 id="total-count">0</h2>
+          </div>
+          <div>
+            <p class="label">Active filters</p>
+            <h2 id="active-count">0</h2>
+          </div>
+        </div>
+      </header>
+
+      <section class="controls">
+        <label class="search">
+          <span>Search names</span>
+          <input
+            id="search"
+            type="search"
+            placeholder="Search by name, meaning, or origin"
+            autocomplete="off"
+          />
+        </label>
+        <div class="filter-group">
+          <label>
+            <span>Gender</span>
+            <select id="gender-filter"></select>
+          </label>
+          <label>
+            <span>Origin</span>
+            <select id="origin-filter"></select>
+          </label>
+          <label>
+            <span>Theme</span>
+            <select id="theme-filter"></select>
+          </label>
+          <label>
+            <span>Starts with</span>
+            <select id="letter-filter"></select>
+          </label>
+        </div>
+        <div class="chip-row" id="chip-row"></div>
+      </section>
+
+      <section class="results">
+        <div class="results-header">
+          <h3 id="results-title">Showing all names</h3>
+          <button class="ghost" id="clear-filters">Clear filters</button>
+        </div>
+        <div id="results" class="results-grid"></div>
+      </section>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
