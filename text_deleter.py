@@ -7,14 +7,44 @@ from tkinter import ttk
 class TextDeleterApp:
     """GUI application that deletes text from the insertion point at a configurable speed."""
 
+    LIGHT_THEME = {
+        "bg": "#f6f6f6",
+        "fg": "#1a1a1a",
+        "text_bg": "#ffffff",
+        "text_fg": "#1a1a1a",
+        "insert_bg": "#1a1a1a",
+        "button_bg": "#e6e6e6",
+        "button_active_bg": "#d6d6d6",
+        "button_fg": "#1a1a1a",
+        "disabled_fg": "#7a7a7a",
+        "scale_trough": "#d9d9d9",
+        "border": "#c2c2c2",
+    }
+    DARK_THEME = {
+        "bg": "#1d1f21",
+        "fg": "#eaeaea",
+        "text_bg": "#2c2f33",
+        "text_fg": "#f0f0f0",
+        "insert_bg": "#f0f0f0",
+        "button_bg": "#3a3f45",
+        "button_active_bg": "#4b5158",
+        "button_fg": "#f0f0f0",
+        "disabled_fg": "#8a8f96",
+        "scale_trough": "#3d434a",
+        "border": "#555b63",
+    }
+
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Incremental Text Deleter")
+        self.style = ttk.Style(self.root)
+        self.style.theme_use("clam")
 
         self.deleting = False
         self.after_id: str | None = None
 
         self._build_widgets()
+        self._apply_theme(self.dark_mode_var.get())
 
     def _build_widgets(self) -> None:
         """Create and layout all widgets for the UI."""
@@ -75,6 +105,17 @@ class TextDeleterApp:
         self.speed_label = ttk.Label(speed_frame, text="10.0")
         self.speed_label.grid(row=0, column=2, padx=(6, 0))
 
+        theme_frame = ttk.Frame(main_frame)
+        theme_frame.grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
+
+        self.dark_mode_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            theme_frame,
+            text="Dark mode",
+            variable=self.dark_mode_var,
+            command=self._toggle_theme,
+        ).grid(row=0, column=0, sticky="w")
+
     def start_deletion(self) -> None:
         """Begin deleting characters from the current cursor position."""
         if self.deleting:
@@ -132,6 +173,51 @@ class TextDeleterApp:
 
     def _update_speed_label(self) -> None:
         self.speed_label.config(text=f"{self.speed_var.get():.1f}")
+
+    def _toggle_theme(self) -> None:
+        self._apply_theme(self.dark_mode_var.get())
+
+    def _apply_theme(self, dark_mode: bool) -> None:
+        colors = self.DARK_THEME if dark_mode else self.LIGHT_THEME
+
+        self.root.configure(bg=colors["bg"])
+        self.style.configure("TFrame", background=colors["bg"])
+        self.style.configure("TLabel", background=colors["bg"], foreground=colors["fg"])
+        self.style.configure(
+            "TButton",
+            background=colors["button_bg"],
+            foreground=colors["button_fg"],
+            bordercolor=colors["border"],
+            focusthickness=1,
+        )
+        self.style.map(
+            "TButton",
+            background=[("active", colors["button_active_bg"])],
+            foreground=[("disabled", colors["disabled_fg"])],
+        )
+        self.style.configure(
+            "TCheckbutton",
+            background=colors["bg"],
+            foreground=colors["fg"],
+        )
+        self.style.map(
+            "TCheckbutton",
+            background=[("active", colors["bg"])],
+            foreground=[("disabled", colors["disabled_fg"])],
+        )
+        self.style.configure(
+            "Horizontal.TScale",
+            background=colors["bg"],
+            troughcolor=colors["scale_trough"],
+        )
+        self.text.configure(
+            background=colors["text_bg"],
+            foreground=colors["text_fg"],
+            insertbackground=colors["insert_bg"],
+            highlightbackground=colors["border"],
+            highlightcolor=colors["border"],
+            highlightthickness=1,
+        )
 
 
 def main() -> None:

@@ -8,6 +8,7 @@ This repository contains a small Tkinter desktop application that simulates a "d
 - Start and Stop controls so you can run the deletion in the background without blocking the interface.
 - Adjustable deletion speed via a slider (characters per second) that can be changed while the deletion is running.
 - Clear button to reset the text area and stop any active deletion loop.
+- Optional dark mode toggle for low-light environments.
 
 ## Requirements
 
