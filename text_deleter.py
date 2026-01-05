@@ -42,6 +42,7 @@ class TextDeleterApp:
 
         self.deleting = False
         self.after_id: str | None = None
+        self.theme_button_text = tk.StringVar()
 
         self._build_widgets()
         self._apply_theme(self.dark_mode_var.get())
@@ -53,40 +54,26 @@ class TextDeleterApp:
 
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
         main_frame.columnconfigure(0, weight=1)
 
-        instructions = (
-            "Paste text below, place the cursor where deletion should begin, and click "
-            "Start. The text will be deleted a character at a time. Adjust the speed "
-            "slider at any time to change how fast characters are removed."
-        )
-        ttk.Label(main_frame, text=instructions, wraplength=420, justify="left").grid(
-            row=0, column=0, columnspan=3, sticky="we", pady=(0, 12)
-        )
+        toolbar = ttk.Frame(main_frame)
+        toolbar.grid(row=0, column=0, sticky="we", pady=(0, 10))
+        toolbar.columnconfigure(5, weight=1)
 
-        self.text = tk.Text(main_frame, width=60, height=18, wrap="word")
-        self.text.grid(row=1, column=0, columnspan=3, sticky="nsew")
-
-        controls_frame = ttk.Frame(main_frame)
-        controls_frame.grid(row=2, column=0, columnspan=3, sticky="we", pady=(12, 0))
-        controls_frame.columnconfigure(3, weight=1)
-
-        self.start_button = ttk.Button(
-            controls_frame, text="Start", command=self.start_deletion
-        )
+        self.start_button = ttk.Button(toolbar, text="Start", command=self.start_deletion)
         self.start_button.grid(row=0, column=0, padx=(0, 8))
 
         self.stop_button = ttk.Button(
-            controls_frame, text="Stop", command=self.stop_deletion, state=tk.DISABLED
+            toolbar, text="Stop", command=self.stop_deletion, state=tk.DISABLED
         )
         self.stop_button.grid(row=0, column=1, padx=(0, 8))
 
-        ttk.Button(controls_frame, text="Clear", command=self.clear_text).grid(
-            row=0, column=2, padx=(0, 8)
+        ttk.Button(toolbar, text="Clear", command=self.clear_text).grid(
+            row=0, column=2, padx=(0, 12)
         )
 
-        speed_frame = ttk.Frame(controls_frame)
+        speed_frame = ttk.Frame(toolbar)
         speed_frame.grid(row=0, column=3, sticky="we")
         ttk.Label(speed_frame, text="Speed (chars/sec):").grid(row=0, column=0, padx=(0, 6))
 
@@ -103,18 +90,37 @@ class TextDeleterApp:
         speed_frame.columnconfigure(1, weight=1)
 
         self.speed_label = ttk.Label(speed_frame, text="10.0")
-        self.speed_label.grid(row=0, column=2, padx=(6, 0))
-
-        theme_frame = ttk.Frame(main_frame)
-        theme_frame.grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
+        self.speed_label.grid(row=0, column=2, padx=(6, 12))
 
         self.dark_mode_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            theme_frame,
-            text="Dark mode",
-            variable=self.dark_mode_var,
+        self.theme_button_text.set("Dark mode")
+        self.theme_button = ttk.Button(
+            toolbar,
+            textvariable=self.theme_button_text,
             command=self._toggle_theme,
-        ).grid(row=0, column=0, sticky="w")
+        )
+        self.theme_button.grid(row=0, column=4, padx=(0, 12))
+
+        ttk.Label(toolbar, text="Paste text, place cursor, then Start.").grid(
+            row=0, column=5, sticky="w"
+        )
+
+        self.text = tk.Text(main_frame, wrap="word")
+        self.text.grid(row=1, column=0, sticky="nsew")
+        self.text.bind("<<Modified>>", self._on_text_modified)
+
+        status_frame = ttk.Frame(main_frame)
+        status_frame.grid(row=2, column=0, sticky="we", pady=(10, 0))
+        self.status_label = ttk.Label(
+            status_frame,
+            text="Ready. Deletion runs in the background while you keep typing.",
+            anchor="w",
+        )
+        self.status_label.grid(row=0, column=0, sticky="we")
+        self.counts_label = ttk.Label(status_frame, text="Lines: 0  |  Characters: 0")
+        self.counts_label.grid(row=0, column=1, sticky="e")
+        status_frame.columnconfigure(0, weight=1)
+        self._update_counts()
 
     def start_deletion(self) -> None:
         """Begin deleting characters from the current cursor position."""
@@ -123,6 +129,7 @@ class TextDeleterApp:
         self.deleting = True
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
+        self.status_label.config(text="Deleting from the cursor position...")
         self._schedule_next_delete()
 
     def stop_deletion(self) -> None:
@@ -130,6 +137,7 @@ class TextDeleterApp:
         self.deleting = False
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
+        self.status_label.config(text="Paused.")
         if self.after_id is not None:
             self.root.after_cancel(self.after_id)
             self.after_id = None
@@ -138,6 +146,8 @@ class TextDeleterApp:
         """Remove all text from the text widget and reset the state."""
         self.stop_deletion()
         self.text.delete("1.0", tk.END)
+        self.status_label.config(text="Cleared.")
+        self._update_counts()
 
     def _schedule_next_delete(self) -> None:
         if not self.deleting:
@@ -158,27 +168,48 @@ class TextDeleterApp:
         last_char_index = self.text.index("end-1c")
         if self.text.compare(last_char_index, "<=", "1.0"):
             self.stop_deletion()
+            self.status_label.config(text="Nothing left to delete.")
             return
 
         insert_index = self.text.index(tk.INSERT)
         if self.text.compare(insert_index, ">", last_char_index):
             self.stop_deletion()
+            self.status_label.config(text="Cursor is past the end of the text.")
             return
 
         self.text.delete(insert_index)
 
         # Keep the cursor at the same position after deletion.
         self.text.mark_set(tk.INSERT, insert_index)
+        self._update_counts()
         self._schedule_next_delete()
 
     def _update_speed_label(self) -> None:
         self.speed_label.config(text=f"{self.speed_var.get():.1f}")
 
+    def _on_text_modified(self, _event: tk.Event) -> None:
+        if self.text.edit_modified():
+            self._update_counts()
+            self.text.edit_modified(False)
+
+    def _update_counts(self) -> None:
+        text_content = self.text.get("1.0", "end-1c")
+        if text_content:
+            line_count = len(text_content.splitlines())
+        else:
+            line_count = 0
+        char_count = len(text_content)
+        self.counts_label.config(
+            text=f"Lines: {line_count}  |  Characters: {char_count}"
+        )
+
     def _toggle_theme(self) -> None:
+        self.dark_mode_var.set(not self.dark_mode_var.get())
         self._apply_theme(self.dark_mode_var.get())
 
     def _apply_theme(self, dark_mode: bool) -> None:
         colors = self.DARK_THEME if dark_mode else self.LIGHT_THEME
+        self.theme_button_text.set("Light mode" if dark_mode else "Dark mode")
 
         self.root.configure(bg=colors["bg"])
         self.style.configure("TFrame", background=colors["bg"])
