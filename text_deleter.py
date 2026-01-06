@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import sys
 
 from PySide6.QtCore import QTimer, Qt
@@ -14,10 +15,41 @@ from PySide6.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
     QSlider,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+
+SPI_GETKEYBOARDSPEED = 0x000A
+SPI_GETKEYBOARDDELAY = 0x0016
+
+
+def get_keyboard_repeat_settings() -> tuple[int, int]:
+    if sys.platform != "win32":
+        return 16, 1
+    speed = ctypes.c_uint()
+    delay = ctypes.c_uint()
+    user32 = ctypes.windll.user32
+    speed_ok = user32.SystemParametersInfoW(
+        SPI_GETKEYBOARDSPEED, 0, ctypes.byref(speed), 0
+    )
+    delay_ok = user32.SystemParametersInfoW(
+        SPI_GETKEYBOARDDELAY, 0, ctypes.byref(delay), 0
+    )
+    speed_value = int(speed.value) if speed_ok else 16
+    delay_value = int(delay.value) if delay_ok else 1
+    return max(0, min(speed_value, 31)), max(0, min(delay_value, 3))
+
+
+def speed_notch_to_cps(notch: int) -> float:
+    min_cps = 2.5
+    max_cps = 30.0
+    capped = max(0, min(notch, 31))
+    return min_cps + (max_cps - min_cps) * (capped / 31)
+
+
+def delay_notch_to_ms(delay_notch: int) -> int:
+    capped = max(0, min(delay_notch, 3))
+    return 250 * (capped + 1)
 
 
 class DeleteController:
@@ -27,27 +59,37 @@ class DeleteController:
         self.editor = editor
         self.update_status = update_status
         self.timer = QTimer()
-        self.timer.setInterval(30)
+        self.timer.setInterval(20)
         self.timer.timeout.connect(self._on_timeout)
+        self.delay_timer = QTimer()
+        self.delay_timer.setSingleShot(True)
+        self.delay_timer.timeout.connect(self._start_repeating)
         self.running = False
-        self.speed_cps = 120
+        self.speed_cps = 10.0
+        self._char_accumulator = 0.0
 
-    def start(self) -> None:
+    def start(self, delay_ms: int) -> None:
         if self.running:
             return
         self.running = True
+        self._char_accumulator = 0.0
         self.update_status("Deleting from cursor position...")
-        self.timer.start()
+        self.delay_timer.start(max(0, delay_ms))
 
     def stop(self) -> None:
         if not self.running:
             return
         self.running = False
+        self.delay_timer.stop()
         self.timer.stop()
         self.update_status("Paused.")
 
-    def set_speed(self, cps: int) -> None:
-        self.speed_cps = max(1, cps)
+    def set_speed(self, cps: float) -> None:
+        self.speed_cps = max(0.1, float(cps))
+
+    def _start_repeating(self) -> None:
+        if self.running:
+            self.timer.start()
 
     def _on_timeout(self) -> None:
         if not self.running:
@@ -59,7 +101,12 @@ class DeleteController:
             self.update_status("Nothing left to delete.")
             return
 
-        batch = max(1, int(self.speed_cps * self.timer.interval() / 1000))
+        per_tick = self.speed_cps * self.timer.interval() / 1000
+        self._char_accumulator += per_tick
+        batch = max(0, int(self._char_accumulator))
+        if batch == 0:
+            return
+        self._char_accumulator -= batch
         cursor = self.editor.textCursor()
         if not cursor.hasSelection() and cursor.position() >= max_position:
             self.stop()
@@ -99,19 +146,18 @@ class TextDeleterWindow(QMainWindow):
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
 
+        self.repeat_rate, self.repeat_delay = get_keyboard_repeat_settings()
         self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(1, 800)
-        self.speed_slider.setValue(120)
-
-        self.speed_spin = QSpinBox()
-        self.speed_spin.setRange(1, 800)
-        self.speed_spin.setValue(120)
+        self.speed_slider.setRange(0, 31)
+        self.speed_slider.setValue(self.repeat_rate)
+        self.speed_slider.setTickInterval(1)
+        self.speed_slider.setTickPosition(QSlider.TicksBelow)
 
         self.theme_button = QPushButton("Dark mode")
         self.dark_mode = False
 
         self.controller = DeleteController(self.editor, self._set_status)
-        self.controller.set_speed(self.speed_slider.value())
+        self.controller.set_speed(speed_notch_to_cps(self.speed_slider.value()))
 
         self._build_layout()
         self._connect_signals()
@@ -123,9 +169,8 @@ class TextDeleterWindow(QMainWindow):
         toolbar.addWidget(self.start_button)
         toolbar.addWidget(self.stop_button)
         toolbar.addSpacing(10)
-        toolbar.addWidget(QLabel("Speed (chars/sec):"))
+        toolbar.addWidget(QLabel("Repeat rate:"))
         toolbar.addWidget(self.speed_slider, 1)
-        toolbar.addWidget(self.speed_spin)
         toolbar.addSpacing(10)
         toolbar.addWidget(self.theme_button)
 
@@ -144,14 +189,13 @@ class TextDeleterWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.start_button.clicked.connect(self._on_start)
         self.stop_button.clicked.connect(self._on_stop)
-        self.speed_slider.valueChanged.connect(self.speed_spin.setValue)
-        self.speed_spin.valueChanged.connect(self.speed_slider.setValue)
-        self.speed_slider.valueChanged.connect(self.controller.set_speed)
+        self.speed_slider.valueChanged.connect(self._on_repeat_rate_changed)
         self.theme_button.clicked.connect(self._toggle_theme)
         self.editor.textChanged.connect(self._update_counts)
 
     def _on_start(self) -> None:
-        self.controller.start()
+        delay_ms = delay_notch_to_ms(self.repeat_delay)
+        self.controller.start(delay_ms)
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
 
@@ -165,6 +209,10 @@ class TextDeleterWindow(QMainWindow):
         if not self.controller.running:
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
+
+    def _on_repeat_rate_changed(self, value: int) -> None:
+        self.repeat_rate = value
+        self.controller.set_speed(speed_notch_to_cps(value))
 
     def _toggle_theme(self) -> None:
         self.dark_mode = not self.dark_mode
