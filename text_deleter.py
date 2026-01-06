@@ -92,6 +92,8 @@ class TextDeleterWindow(QMainWindow):
 
         self.status_label = QLabel("Paste text, place cursor, then Start.")
         self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.counts_label = QLabel("Lines: 0  |  Characters: 0")
+        self.counts_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.start_button = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
@@ -114,6 +116,7 @@ class TextDeleterWindow(QMainWindow):
         self._build_layout()
         self._connect_signals()
         self._apply_theme()
+        self._update_counts()
 
     def _build_layout(self) -> None:
         toolbar = QHBoxLayout()
@@ -129,7 +132,10 @@ class TextDeleterWindow(QMainWindow):
         main_layout = QVBoxLayout()
         main_layout.addLayout(toolbar)
         main_layout.addWidget(self.editor, 1)
-        main_layout.addWidget(self.status_label)
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(self.status_label, 1)
+        status_layout.addWidget(self.counts_label)
+        main_layout.addLayout(status_layout)
 
         container = QWidget()
         container.setLayout(main_layout)
@@ -142,6 +148,7 @@ class TextDeleterWindow(QMainWindow):
         self.speed_spin.valueChanged.connect(self.speed_slider.setValue)
         self.speed_slider.valueChanged.connect(self.controller.set_speed)
         self.theme_button.clicked.connect(self._toggle_theme)
+        self.editor.textChanged.connect(self._update_counts)
 
     def _on_start(self) -> None:
         self.controller.start()
@@ -162,6 +169,11 @@ class TextDeleterWindow(QMainWindow):
     def _toggle_theme(self) -> None:
         self.dark_mode = not self.dark_mode
         self._apply_theme()
+
+    def _update_counts(self) -> None:
+        lines = self.editor.blockCount()
+        chars = max(0, self.editor.document().characterCount() - 1)
+        self.counts_label.setText(f"Lines: {lines}  |  Characters: {chars}")
 
     def _apply_theme(self) -> None:
         palette = QPalette()
