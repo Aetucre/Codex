@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QPlainTextEdit,
+    QComboBox,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -156,6 +157,14 @@ class TextDeleterWindow(QMainWindow):
         self.theme_button = QPushButton("Dark mode")
         self.dark_mode = False
 
+        self.font_selector = QComboBox()
+        self.font_selector.addItems(["Arial", "Courier New", "Consolas"])
+        self.font_selector.setCurrentText("Courier New")
+
+        self.size_selector = QComboBox()
+        self.size_selector.addItems(["10", "12", "14"])
+        self.size_selector.setCurrentText("10")
+
         self.controller = DeleteController(self.editor, self._set_status)
         self.controller.set_speed(speed_notch_to_cps(self.speed_slider.value()))
 
@@ -171,6 +180,11 @@ class TextDeleterWindow(QMainWindow):
         toolbar.addSpacing(10)
         toolbar.addWidget(QLabel("Repeat rate:"))
         toolbar.addWidget(self.speed_slider, 1)
+        toolbar.addSpacing(10)
+        toolbar.addWidget(QLabel("Font:"))
+        toolbar.addWidget(self.font_selector)
+        toolbar.addWidget(QLabel("Size:"))
+        toolbar.addWidget(self.size_selector)
         toolbar.addSpacing(10)
         toolbar.addWidget(self.theme_button)
 
@@ -192,6 +206,9 @@ class TextDeleterWindow(QMainWindow):
         self.speed_slider.valueChanged.connect(self._on_repeat_rate_changed)
         self.theme_button.clicked.connect(self._toggle_theme)
         self.editor.textChanged.connect(self._update_counts)
+        self.font_selector.currentTextChanged.connect(self._apply_editor_font)
+        self.size_selector.currentTextChanged.connect(self._apply_editor_font)
+        self._apply_editor_font()
 
     def _on_start(self) -> None:
         delay_ms = delay_notch_to_ms(self.repeat_delay)
@@ -217,6 +234,11 @@ class TextDeleterWindow(QMainWindow):
     def _toggle_theme(self) -> None:
         self.dark_mode = not self.dark_mode
         self._apply_theme()
+
+    def _apply_editor_font(self) -> None:
+        family = self.font_selector.currentText()
+        size = int(self.size_selector.currentText())
+        self.editor.setFont(QFont(family, size))
 
     def _update_counts(self) -> None:
         lines = self.editor.blockCount()
