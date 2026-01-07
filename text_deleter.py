@@ -1,260 +1,273 @@
-"""Simple Tkinter application that deletes text incrementally like a delete key."""
+"""PySide6 application that deletes text incrementally like holding Delete."""
 
-import tkinter as tk
-from tkinter import ttk
+from __future__ import annotations
+
+import ctypes
+import sys
+
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QFont, QPalette
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QPlainTextEdit,
+    QComboBox,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
+
+SPI_GETKEYBOARDSPEED = 0x000A
+SPI_GETKEYBOARDDELAY = 0x0016
 
 
-class TextDeleterApp:
-    """GUI application that deletes text from the insertion point at a configurable speed."""
+def get_keyboard_repeat_settings() -> tuple[int, int]:
+    if sys.platform != "win32":
+        return 16, 1
+    speed = ctypes.c_uint()
+    delay = ctypes.c_uint()
+    user32 = ctypes.windll.user32
+    speed_ok = user32.SystemParametersInfoW(
+        SPI_GETKEYBOARDSPEED, 0, ctypes.byref(speed), 0
+    )
+    delay_ok = user32.SystemParametersInfoW(
+        SPI_GETKEYBOARDDELAY, 0, ctypes.byref(delay), 0
+    )
+    speed_value = int(speed.value) if speed_ok else 16
+    delay_value = int(delay.value) if delay_ok else 1
+    return max(0, min(speed_value, 31)), max(0, min(delay_value, 3))
 
-    LIGHT_THEME = {
-        "bg": "#f6f6f6",
-        "fg": "#1a1a1a",
-        "text_bg": "#ffffff",
-        "text_fg": "#1a1a1a",
-        "insert_bg": "#1a1a1a",
-        "button_bg": "#e6e6e6",
-        "button_active_bg": "#d6d6d6",
-        "button_fg": "#1a1a1a",
-        "disabled_fg": "#7a7a7a",
-        "scale_trough": "#d9d9d9",
-        "border": "#c2c2c2",
-    }
-    DARK_THEME = {
-        "bg": "#1d1f21",
-        "fg": "#eaeaea",
-        "text_bg": "#2c2f33",
-        "text_fg": "#f0f0f0",
-        "insert_bg": "#f0f0f0",
-        "button_bg": "#3a3f45",
-        "button_active_bg": "#4b5158",
-        "button_fg": "#f0f0f0",
-        "disabled_fg": "#8a8f96",
-        "scale_trough": "#3d434a",
-        "border": "#555b63",
-    }
 
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
-        self.root.title("Incremental Text Deleter")
-        self.style = ttk.Style(self.root)
-        self.style.theme_use("clam")
+def speed_notch_to_cps(notch: int) -> float:
+    min_cps = 2.5
+    max_cps = 30.0
+    capped = max(0, min(notch, 31))
+    return min_cps + (max_cps - min_cps) * (capped / 31)
 
-        self.deleting = False
-        self.after_id: str | None = None
-        self.theme_button_text = tk.StringVar()
 
-        self._build_widgets()
-        self._apply_theme(self.dark_mode_var.get())
+def delay_notch_to_ms(delay_notch: int) -> int:
+    capped = max(0, min(delay_notch, 3))
+    return 250 * (capped + 1)
 
-    def _build_widgets(self) -> None:
-        """Create and layout all widgets for the UI."""
-        main_frame = ttk.Frame(self.root, padding="16")
-        main_frame.grid(row=0, column=0, sticky="nsew")
 
-        self.root.rowconfigure(0, weight=1)
-        self.root.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(1, weight=1)
-        main_frame.columnconfigure(0, weight=1)
+class DeleteController:
+    """Handle incremental deletion without blocking the UI."""
 
-        toolbar = ttk.Frame(main_frame)
-        toolbar.grid(row=0, column=0, sticky="we", pady=(0, 10))
-        toolbar.columnconfigure(5, weight=1)
+    def __init__(self, editor: QPlainTextEdit, update_status) -> None:
+        self.editor = editor
+        self.update_status = update_status
+        self.timer = QTimer()
+        self.timer.setInterval(20)
+        self.timer.timeout.connect(self._on_timeout)
+        self.delay_timer = QTimer()
+        self.delay_timer.setSingleShot(True)
+        self.delay_timer.timeout.connect(self._start_repeating)
+        self.running = False
+        self.speed_cps = 10.0
+        self._char_accumulator = 0.0
 
-        self.start_button = ttk.Button(toolbar, text="Start", command=self.start_deletion)
-        self.start_button.grid(row=0, column=0, padx=(0, 8))
-
-        self.stop_button = ttk.Button(
-            toolbar, text="Stop", command=self.stop_deletion, state=tk.DISABLED
-        )
-        self.stop_button.grid(row=0, column=1, padx=(0, 8))
-
-        ttk.Button(toolbar, text="Clear", command=self.clear_text).grid(
-            row=0, column=2, padx=(0, 12)
-        )
-
-        speed_frame = ttk.Frame(toolbar)
-        speed_frame.grid(row=0, column=3, sticky="we")
-        ttk.Label(speed_frame, text="Speed (chars/sec):").grid(row=0, column=0, padx=(0, 6))
-
-        self.speed_var = tk.DoubleVar(value=10.0)
-        self.speed_scale = ttk.Scale(
-            speed_frame,
-            orient="horizontal",
-            from_=1,
-            to=30,
-            variable=self.speed_var,
-            command=lambda _event=None: self._update_speed_label(),
-        )
-        self.speed_scale.grid(row=0, column=1, sticky="we")
-        speed_frame.columnconfigure(1, weight=1)
-
-        self.speed_label = ttk.Label(speed_frame, text="10.0")
-        self.speed_label.grid(row=0, column=2, padx=(6, 12))
-
-        self.dark_mode_var = tk.BooleanVar(value=False)
-        self.theme_button_text.set("Dark mode")
-        self.theme_button = ttk.Button(
-            toolbar,
-            textvariable=self.theme_button_text,
-            command=self._toggle_theme,
-        )
-        self.theme_button.grid(row=0, column=4, padx=(0, 12))
-
-        ttk.Label(toolbar, text="Paste text, place cursor, then Start.").grid(
-            row=0, column=5, sticky="w"
-        )
-
-        self.text = tk.Text(main_frame, wrap="word")
-        self.text.grid(row=1, column=0, sticky="nsew")
-        self.text.bind("<<Modified>>", self._on_text_modified)
-
-        status_frame = ttk.Frame(main_frame)
-        status_frame.grid(row=2, column=0, sticky="we", pady=(10, 0))
-        self.status_label = ttk.Label(
-            status_frame,
-            text="Ready. Deletion runs in the background while you keep typing.",
-            anchor="w",
-        )
-        self.status_label.grid(row=0, column=0, sticky="we")
-        self.counts_label = ttk.Label(status_frame, text="Lines: 0  |  Characters: 0")
-        self.counts_label.grid(row=0, column=1, sticky="e")
-        status_frame.columnconfigure(0, weight=1)
-        self._update_counts()
-
-    def start_deletion(self) -> None:
-        """Begin deleting characters from the current cursor position."""
-        if self.deleting:
+    def start(self, delay_ms: int) -> None:
+        if self.running:
             return
-        self.deleting = True
-        self.start_button.config(state=tk.DISABLED)
-        self.stop_button.config(state=tk.NORMAL)
-        self.status_label.config(text="Deleting from the cursor position...")
-        self._schedule_next_delete()
+        self.running = True
+        self._char_accumulator = 0.0
+        self.update_status("Deleting from cursor position...")
+        self.delay_timer.start(max(0, delay_ms))
 
-    def stop_deletion(self) -> None:
-        """Stop deleting characters."""
-        self.deleting = False
-        self.start_button.config(state=tk.NORMAL)
-        self.stop_button.config(state=tk.DISABLED)
-        self.status_label.config(text="Paused.")
-        if self.after_id is not None:
-            self.root.after_cancel(self.after_id)
-            self.after_id = None
+    def stop(self) -> None:
+        if not self.running:
+            return
+        self.running = False
+        self.delay_timer.stop()
+        self.timer.stop()
+        self.update_status("Paused.")
 
-    def clear_text(self) -> None:
-        """Remove all text from the text widget and reset the state."""
-        self.stop_deletion()
-        self.text.delete("1.0", tk.END)
-        self.status_label.config(text="Cleared.")
-        self._update_counts()
+    def set_speed(self, cps: float) -> None:
+        self.speed_cps = max(0.1, float(cps))
 
-    def _schedule_next_delete(self) -> None:
-        if not self.deleting:
+    def _start_repeating(self) -> None:
+        if self.running:
+            self.timer.start()
+
+    def _on_timeout(self) -> None:
+        if not self.running:
+            return
+        document = self.editor.document()
+        max_position = max(0, document.characterCount() - 1)
+        if max_position == 0:
+            self.stop()
+            self.update_status("Nothing left to delete.")
             return
 
-        cps = max(self.speed_var.get(), 0.1)  # Avoid division by zero if slider at minimum.
-        delay_ms = int(1000 / cps)
-        delay_ms = max(delay_ms, 10)  # Cap minimum delay to avoid event loop overload.
-
-        self.after_id = self.root.after(delay_ms, self._delete_character)
-
-    def _delete_character(self) -> None:
-        if not self.deleting:
+        per_tick = self.speed_cps * self.timer.interval() / 1000
+        self._char_accumulator += per_tick
+        batch = max(0, int(self._char_accumulator))
+        if batch == 0:
             return
-
-        # The Text widget always keeps a trailing newline. If nothing but the newline
-        # remains we stop.
-        last_char_index = self.text.index("end-1c")
-        if self.text.compare(last_char_index, "<=", "1.0"):
-            self.stop_deletion()
-            self.status_label.config(text="Nothing left to delete.")
+        self._char_accumulator -= batch
+        cursor = self.editor.textCursor()
+        if not cursor.hasSelection() and cursor.position() >= max_position:
+            self.stop()
+            self.update_status("Cursor is past the end of the text.")
             return
-
-        insert_index = self.text.index(tk.INSERT)
-        if self.text.compare(insert_index, ">", last_char_index):
-            self.stop_deletion()
-            self.status_label.config(text="Cursor is past the end of the text.")
-            return
-
-        self.text.delete(insert_index)
-
-        # Keep the cursor at the same position after deletion.
-        self.text.mark_set(tk.INSERT, insert_index)
-        self._update_counts()
-        self._schedule_next_delete()
-
-    def _update_speed_label(self) -> None:
-        self.speed_label.config(text=f"{self.speed_var.get():.1f}")
-
-    def _on_text_modified(self, _event: tk.Event) -> None:
-        if self.text.edit_modified():
-            self._update_counts()
-            self.text.edit_modified(False)
-
-    def _update_counts(self) -> None:
-        text_content = self.text.get("1.0", "end-1c")
-        if text_content:
-            line_count = len(text_content.splitlines())
+        cursor.beginEditBlock()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
         else:
-            line_count = 0
-        char_count = len(text_content)
-        self.counts_label.config(
-            text=f"Lines: {line_count}  |  Characters: {char_count}"
-        )
+            for _ in range(batch):
+                if cursor.position() >= max_position:
+                    break
+                cursor.deleteChar()
+        cursor.endEditBlock()
+        self.editor.setTextCursor(cursor)
+
+
+class TextDeleterWindow(QMainWindow):
+    """Main application window."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("Incremental Text Deleter")
+        self.resize(1000, 700)
+
+        self.editor = QPlainTextEdit()
+        self.editor.setPlainText("")
+        self.editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.editor.setFont(QFont("Courier New", 10))
+
+        self.status_label = QLabel("Paste text, place cursor, then Start.")
+        self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.counts_label = QLabel("Lines: 0  |  Characters: 0")
+        self.counts_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self.start_button = QPushButton("Start")
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setEnabled(False)
+
+        self.repeat_rate, self.repeat_delay = get_keyboard_repeat_settings()
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setRange(0, 31)
+        self.speed_slider.setValue(self.repeat_rate)
+        self.speed_slider.setTickInterval(1)
+        self.speed_slider.setTickPosition(QSlider.TicksBelow)
+
+        self.theme_button = QPushButton("Dark mode")
+        self.dark_mode = False
+
+        self.font_selector = QComboBox()
+        self.font_selector.addItems(["Arial", "Courier New", "Consolas"])
+        self.font_selector.setCurrentText("Courier New")
+
+        self.size_selector = QComboBox()
+        self.size_selector.addItems(["10", "12", "14"])
+        self.size_selector.setCurrentText("10")
+
+        self.controller = DeleteController(self.editor, self._set_status)
+        self.controller.set_speed(speed_notch_to_cps(self.speed_slider.value()))
+
+        self._build_layout()
+        self._connect_signals()
+        self._apply_theme()
+        self._update_counts()
+
+    def _build_layout(self) -> None:
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.start_button)
+        toolbar.addWidget(self.stop_button)
+        toolbar.addSpacing(10)
+        toolbar.addWidget(QLabel("Repeat rate:"))
+        toolbar.addWidget(self.speed_slider, 1)
+        toolbar.addSpacing(10)
+        toolbar.addWidget(QLabel("Font:"))
+        toolbar.addWidget(self.font_selector)
+        toolbar.addWidget(QLabel("Size:"))
+        toolbar.addWidget(self.size_selector)
+        toolbar.addSpacing(10)
+        toolbar.addWidget(self.theme_button)
+
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(toolbar)
+        main_layout.addWidget(self.editor, 1)
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(self.status_label, 1)
+        status_layout.addWidget(self.counts_label)
+        main_layout.addLayout(status_layout)
+
+        container = QWidget()
+        container.setLayout(main_layout)
+        self.setCentralWidget(container)
+
+    def _connect_signals(self) -> None:
+        self.start_button.clicked.connect(self._on_start)
+        self.stop_button.clicked.connect(self._on_stop)
+        self.speed_slider.valueChanged.connect(self._on_repeat_rate_changed)
+        self.theme_button.clicked.connect(self._toggle_theme)
+        self.editor.textChanged.connect(self._update_counts)
+        self.font_selector.currentTextChanged.connect(self._apply_editor_font)
+        self.size_selector.currentTextChanged.connect(self._apply_editor_font)
+        self._apply_editor_font()
+
+    def _on_start(self) -> None:
+        delay_ms = delay_notch_to_ms(self.repeat_delay)
+        self.controller.start(delay_ms)
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+    def _on_stop(self) -> None:
+        self.controller.stop()
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+
+    def _set_status(self, text: str) -> None:
+        self.status_label.setText(text)
+        if not self.controller.running:
+            self.start_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
+
+    def _on_repeat_rate_changed(self, value: int) -> None:
+        self.repeat_rate = value
+        self.controller.set_speed(speed_notch_to_cps(value))
 
     def _toggle_theme(self) -> None:
-        self.dark_mode_var.set(not self.dark_mode_var.get())
-        self._apply_theme(self.dark_mode_var.get())
+        self.dark_mode = not self.dark_mode
+        self._apply_theme()
 
-    def _apply_theme(self, dark_mode: bool) -> None:
-        colors = self.DARK_THEME if dark_mode else self.LIGHT_THEME
-        self.theme_button_text.set("Light mode" if dark_mode else "Dark mode")
+    def _apply_editor_font(self) -> None:
+        family = self.font_selector.currentText()
+        size = int(self.size_selector.currentText())
+        self.editor.setFont(QFont(family, size))
 
-        self.root.configure(bg=colors["bg"])
-        self.style.configure("TFrame", background=colors["bg"])
-        self.style.configure("TLabel", background=colors["bg"], foreground=colors["fg"])
-        self.style.configure(
-            "TButton",
-            background=colors["button_bg"],
-            foreground=colors["button_fg"],
-            bordercolor=colors["border"],
-            focusthickness=1,
-        )
-        self.style.map(
-            "TButton",
-            background=[("active", colors["button_active_bg"])],
-            foreground=[("disabled", colors["disabled_fg"])],
-        )
-        self.style.configure(
-            "TCheckbutton",
-            background=colors["bg"],
-            foreground=colors["fg"],
-        )
-        self.style.map(
-            "TCheckbutton",
-            background=[("active", colors["bg"])],
-            foreground=[("disabled", colors["disabled_fg"])],
-        )
-        self.style.configure(
-            "Horizontal.TScale",
-            background=colors["bg"],
-            troughcolor=colors["scale_trough"],
-        )
-        self.text.configure(
-            background=colors["text_bg"],
-            foreground=colors["text_fg"],
-            insertbackground=colors["insert_bg"],
-            highlightbackground=colors["border"],
-            highlightcolor=colors["border"],
-            highlightthickness=1,
-        )
+    def _update_counts(self) -> None:
+        lines = self.editor.blockCount()
+        chars = max(0, self.editor.document().characterCount() - 1)
+        self.counts_label.setText(f"Lines: {lines}  |  Characters: {chars}")
+
+    def _apply_theme(self) -> None:
+        palette = QPalette()
+        if self.dark_mode:
+            palette.setColor(QPalette.Window, Qt.black)
+            palette.setColor(QPalette.WindowText, Qt.white)
+            palette.setColor(QPalette.Base, Qt.black)
+            palette.setColor(QPalette.Text, Qt.white)
+            palette.setColor(QPalette.Button, Qt.darkGray)
+            palette.setColor(QPalette.ButtonText, Qt.white)
+            palette.setColor(QPalette.Highlight, Qt.gray)
+            self.theme_button.setText("Light mode")
+        else:
+            palette = QApplication.style().standardPalette()
+            self.theme_button.setText("Dark mode")
+        QApplication.instance().setPalette(palette)
 
 
 def main() -> None:
-    root = tk.Tk()
-    app = TextDeleterApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = TextDeleterWindow()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
