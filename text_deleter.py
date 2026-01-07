@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import ctypes
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QStandardPaths, QTimer, Qt
 from PySide6.QtGui import QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 SPI_GETKEYBOARDSPEED = 0x000A
 SPI_GETKEYBOARDDELAY = 0x0016
+STATE_FILENAME = "last_session.txt"
 
 
 def get_keyboard_repeat_settings() -> tuple[int, int]:
@@ -51,6 +53,12 @@ def speed_notch_to_cps(notch: int) -> float:
 def delay_notch_to_ms(delay_notch: int) -> int:
     capped = max(0, min(delay_notch, 3))
     return 250 * (capped + 1)
+
+
+def get_state_path() -> Path:
+    base_dir = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir / STATE_FILENAME
 
 
 class DeleteController:
@@ -172,6 +180,7 @@ class TextDeleterWindow(QMainWindow):
         self._connect_signals()
         self._apply_theme()
         self._update_counts()
+        self._load_saved_text()
 
     def _build_layout(self) -> None:
         toolbar = QHBoxLayout()
@@ -244,6 +253,20 @@ class TextDeleterWindow(QMainWindow):
         lines = self.editor.blockCount()
         chars = max(0, self.editor.document().characterCount() - 1)
         self.counts_label.setText(f"Lines: {lines}  |  Characters: {chars}")
+
+    def _load_saved_text(self) -> None:
+        path = get_state_path()
+        if path.exists():
+            self.editor.setPlainText(path.read_text(encoding="utf-8"))
+            self._update_counts()
+
+    def _save_text(self) -> None:
+        path = get_state_path()
+        path.write_text(self.editor.toPlainText(), encoding="utf-8")
+
+    def closeEvent(self, event) -> None:
+        self._save_text()
+        super().closeEvent(event)
 
     def _apply_theme(self) -> None:
         palette = QPalette()
