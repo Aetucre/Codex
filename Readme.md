@@ -1,23 +1,21 @@
-# Incremental Text Deleter
+# Travel Visit Tracker
 
-This repository contains a small Tkinter desktop application that simulates a "delete" key that runs automatically in the background. Paste any block of text into the editor, place the cursor where you want deletion to begin, and press **Start**. The application will remove one character at a time from the cursor onward until all text has been removed or you press **Stop**.
+A lightweight browser app for tracking visits to **restaurants** and **hotels**.
 
-## Features
+## What it does
 
-- Text area for pasting or typing the content you want to erase.
-- Start and Stop controls so you can run the deletion in the background without blocking the interface.
-- Adjustable deletion speed via a slider (characters per second) that can be changed while the deletion is running.
-- Clear button to reset the text area and stop any active deletion loop.
-- Optional dark mode toggle for low-light environments.
+- Add establishments (restaurant or hotel) into a dropdown list.
+- Log visits by selecting an establishment and visit date.
+- Store notes for what you liked and did not like (menu items, accommodations, amenities, etc.).
+- View visit history sorted by most recent date.
+- Persist data in localStorage so entries remain after refresh.
 
-## Requirements
+## Run locally
 
-The app is built with the Tkinter standard library module, so no external dependencies are required. Any Python 3.10+ environment with Tk support should work.
-
-## Running the application
+Because this is a static app, you can open `index.html` directly, or run a local web server:
 
 ```bash
-python text_deleter.py
+python -m http.server 8000
 ```
 
-A GUI window will open where you can paste text, adjust the speed slider, and control the deletion process with the Start/Stop buttons.
+Then open <http://localhost:8000>.
