@@ -25,10 +25,16 @@ class Establishment:
 class VisitTrackerApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Restaurant & Hotel Visit Tracker")
+        self.root.title("Restaurant, Hotel & Amusement Visit Tracker")
         self.root.geometry("850x550")
 
         self.establishments: dict[str, Establishment] = {}
+        self.review_draft = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "liked": "",
+            "disliked": "",
+        }
+
         self.load_data()
 
         self.build_ui()
@@ -50,7 +56,7 @@ class VisitTrackerApp:
         ttk.Combobox(
             add_section,
             textvariable=self.type_var,
-            values=["Restaurant", "Hotel"],
+            values=["Restaurant", "Hotel", "Amusement"],
             state="readonly",
             width=15,
         ).grid(row=0, column=3, padx=8)
@@ -64,7 +70,7 @@ class VisitTrackerApp:
         self.selected_establishment = tk.StringVar()
         self.dropdown = ttk.Combobox(visit_section, textvariable=self.selected_establishment, state="readonly", width=40)
         self.dropdown.grid(row=0, column=1, padx=8)
-        self.dropdown.bind("<<ComboboxSelected>>", lambda _: self.render_visit_history())
+        self.dropdown.bind("<<ComboboxSelected>>", lambda _: self.on_establishment_selected())
 
         ttk.Label(visit_section, text="Date (YYYY-MM-DD):").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
         self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
@@ -78,7 +84,14 @@ class VisitTrackerApp:
         self.disliked_text = tk.Text(visit_section, height=4, width=50)
         self.disliked_text.grid(row=3, column=1, sticky=tk.W, pady=(8, 0))
 
-        ttk.Button(visit_section, text="Add Visit", command=self.add_visit).grid(row=4, column=1, sticky=tk.E, pady=(8, 0))
+        button_row = ttk.Frame(visit_section)
+        button_row.grid(row=4, column=1, sticky=tk.EW, pady=(8, 0))
+        button_row.columnconfigure(0, weight=1)
+
+        self.save_status_var = tk.StringVar(value="")
+        ttk.Label(button_row, textvariable=self.save_status_var).grid(row=0, column=0, sticky=tk.W)
+        ttk.Button(button_row, text="Save Review Draft", command=self.save_review_draft).grid(row=0, column=1, padx=(0, 8))
+        ttk.Button(button_row, text="Add Visit", command=self.add_visit).grid(row=0, column=2)
 
         history_section = ttk.LabelFrame(main, text="Visit History", padding=12)
         history_section.pack(fill=tk.BOTH, expand=True)
@@ -89,8 +102,30 @@ class VisitTrackerApp:
     def load_data(self) -> None:
         if not DATA_FILE.exists():
             return
+
         raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        for est in raw:
+
+        # Backward compatibility for previous list-based format.
+        if isinstance(raw, list):
+            for est in raw:
+                self.establishments[est["name"]] = Establishment(
+                    name=est["name"],
+                    type=est["type"],
+                    visits=est.get("visits", []),
+                )
+            return
+
+        if not isinstance(raw, dict):
+            return
+
+        saved_draft = raw.get("review_draft", {})
+        self.review_draft = {
+            "date": saved_draft.get("date", self.review_draft["date"]),
+            "liked": saved_draft.get("liked", ""),
+            "disliked": saved_draft.get("disliked", ""),
+        }
+
+        for est in raw.get("establishments", []):
             self.establishments[est["name"]] = Establishment(
                 name=est["name"],
                 type=est["type"],
@@ -98,8 +133,34 @@ class VisitTrackerApp:
             )
 
     def save_data(self) -> None:
-        data = [asdict(est) for est in self.establishments.values()]
+        data = {
+            "establishments": [asdict(est) for est in self.establishments.values()],
+            "review_draft": self.review_draft,
+        }
         DATA_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def fill_review_fields_from_draft(self) -> None:
+        self.date_var.set(self.review_draft.get("date", datetime.now().strftime("%Y-%m-%d")))
+        self.liked_text.delete("1.0", tk.END)
+        self.liked_text.insert("1.0", self.review_draft.get("liked", ""))
+        self.disliked_text.delete("1.0", tk.END)
+        self.disliked_text.insert("1.0", self.review_draft.get("disliked", ""))
+
+    def capture_draft_from_form(self) -> None:
+        self.review_draft = {
+            "date": self.date_var.get().strip(),
+            "liked": self.liked_text.get("1.0", tk.END).strip(),
+            "disliked": self.disliked_text.get("1.0", tk.END).strip(),
+        }
+
+    def save_review_draft(self) -> None:
+        self.capture_draft_from_form()
+        self.save_data()
+        self.save_status_var.set("Draft saved")
+
+    def on_establishment_selected(self) -> None:
+        self.fill_review_fields_from_draft()
+        self.render_visit_history()
 
     def add_establishment(self) -> None:
         name = self.name_var.get().strip()
@@ -127,6 +188,7 @@ class VisitTrackerApp:
             self.selected_establishment.set(names[0])
 
         self.render_visit_history()
+        self.fill_review_fields_from_draft()
 
     def add_visit(self) -> None:
         selected = self.selected_establishment.get().strip()
@@ -150,7 +212,10 @@ class VisitTrackerApp:
 
         visit = Visit(date=visit_date, liked=liked, disliked=disliked)
         self.establishments[selected].visits.append(asdict(visit))
+
+        self.review_draft = {"date": datetime.now().strftime("%Y-%m-%d"), "liked": "", "disliked": ""}
         self.save_data()
+        self.save_status_var.set("Visit added and saved")
 
         self.liked_text.delete("1.0", tk.END)
         self.disliked_text.delete("1.0", tk.END)
