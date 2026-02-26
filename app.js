@@ -1,212 +1,217 @@
+const STORAGE_KEY = "visit-tracker-data-v1";
+
 const state = {
-  search: "",
-  gender: "All",
-  origin: "All",
-  theme: "All",
-  letter: "All",
-  data: [],
+  establishments: [],
+  visits: [],
 };
 
 const elements = {
-  search: document.getElementById("search"),
-  gender: document.getElementById("gender-filter"),
-  origin: document.getElementById("origin-filter"),
-  theme: document.getElementById("theme-filter"),
-  letter: document.getElementById("letter-filter"),
-  results: document.getElementById("results"),
-  total: document.getElementById("total-count"),
-  active: document.getElementById("active-count"),
-  resultsTitle: document.getElementById("results-title"),
-  chipRow: document.getElementById("chip-row"),
-  clear: document.getElementById("clear-filters"),
+  establishmentForm: document.getElementById("establishment-form"),
+  establishmentName: document.getElementById("establishment-name"),
+  establishmentType: document.getElementById("establishment-type"),
+  visitForm: document.getElementById("visit-form"),
+  visitEstablishment: document.getElementById("visit-establishment"),
+  visitDate: document.getElementById("visit-date"),
+  likedNotes: document.getElementById("liked-notes"),
+  dislikedNotes: document.getElementById("disliked-notes"),
+  visitList: document.getElementById("visit-list"),
+  emptyMessage: document.getElementById("empty-message"),
+  clearAll: document.getElementById("clear-all"),
 };
 
-const createOption = (value, label = value) => {
-  const option = document.createElement("option");
-  option.value = value;
-  option.textContent = label;
-  return option;
+const saveState = () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 };
 
-const buildSelect = (select, values) => {
-  select.innerHTML = "";
-  select.appendChild(createOption("All"));
-  values.forEach((value) => select.appendChild(createOption(value)));
-};
-
-const normalize = (value) => value.toLowerCase();
-
-const filterData = () => {
-  const searchTerm = normalize(state.search);
-  return state.data.filter((entry) => {
-    const matchesSearch =
-      !searchTerm ||
-      [entry.name, entry.meaning, entry.origin, entry.theme]
-        .filter(Boolean)
-        .some((field) => normalize(field).includes(searchTerm));
-    const matchesGender = state.gender === "All" || entry.gender === state.gender;
-    const matchesOrigin = state.origin === "All" || entry.origin === state.origin;
-    const matchesTheme = state.theme === "All" || entry.theme === state.theme;
-    const matchesLetter =
-      state.letter === "All" || entry.name.startsWith(state.letter);
-
-    return (
-      matchesSearch &&
-      matchesGender &&
-      matchesOrigin &&
-      matchesTheme &&
-      matchesLetter
-    );
-  });
-};
-
-const renderChips = () => {
-  const chips = [];
-  if (state.gender !== "All") {
-    chips.push({ key: "gender", label: `Gender: ${state.gender}` });
-  }
-  if (state.origin !== "All") {
-    chips.push({ key: "origin", label: `Origin: ${state.origin}` });
-  }
-  if (state.theme !== "All") {
-    chips.push({ key: "theme", label: `Theme: ${state.theme}` });
-  }
-  if (state.letter !== "All") {
-    chips.push({ key: "letter", label: `Letter: ${state.letter}` });
-  }
-
-  elements.chipRow.innerHTML = "";
-  chips.forEach((chip) => {
-    const pill = document.createElement("div");
-    pill.className = "chip";
-    const text = document.createElement("span");
-    text.textContent = chip.label;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "×";
-    button.addEventListener("click", () => {
-      state[chip.key] = "All";
-      syncFilters();
-      render();
-    });
-    pill.append(text, button);
-    elements.chipRow.appendChild(pill);
-  });
-};
-
-const renderCards = (data) => {
-  elements.results.innerHTML = "";
-  if (!data.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = "No names match these filters. Try a new search.";
-    elements.results.appendChild(empty);
+const loadState = () => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
     return;
   }
 
-  data.forEach((entry) => {
-    const card = document.createElement("article");
-    card.className = "card";
+  try {
+    const parsed = JSON.parse(raw);
+    state.establishments = Array.isArray(parsed.establishments)
+      ? parsed.establishments
+      : [];
+    state.visits = Array.isArray(parsed.visits) ? parsed.visits : [];
+  } catch {
+    state.establishments = [];
+    state.visits = [];
+  }
+};
 
-    const title = document.createElement("h4");
-    title.textContent = entry.name;
+const createId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const meaning = document.createElement("p");
-    meaning.textContent = entry.meaning;
+const formatDate = (isoDate) => {
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoDate;
+  }
 
-    const badges = document.createElement("div");
-    badges.className = "badges";
-    [entry.gender, entry.origin, entry.theme]
-      .filter(Boolean)
-      .forEach((value) => {
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = value;
-        badges.appendChild(badge);
-      });
-
-    const notes = document.createElement("p");
-    notes.textContent = entry.notes;
-
-    card.append(title, meaning, badges, notes);
-    elements.results.appendChild(card);
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 };
 
-const render = () => {
-  const filtered = filterData();
-  elements.total.textContent = state.data.length.toLocaleString();
-  elements.active.textContent = [
-    state.gender,
-    state.origin,
-    state.theme,
-    state.letter,
-  ].filter((value) => value !== "All").length;
+const syncEstablishmentDropdown = () => {
+  elements.visitEstablishment.innerHTML = "";
 
-  const heading = state.search
-    ? `Results for “${state.search}” (${filtered.length})`
-    : `Showing ${filtered.length} name${filtered.length === 1 ? "" : "s"}`;
-  elements.resultsTitle.textContent = heading;
-  renderChips();
-  renderCards(filtered);
+  if (!state.establishments.length) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Add an establishment first";
+    elements.visitEstablishment.appendChild(placeholder);
+    elements.visitEstablishment.disabled = true;
+    return;
+  }
+
+  elements.visitEstablishment.disabled = false;
+
+  state.establishments
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.id;
+      option.textContent = `${entry.name} (${entry.type})`;
+      elements.visitEstablishment.appendChild(option);
+    });
 };
 
-const syncFilters = () => {
-  elements.gender.value = state.gender;
-  elements.origin.value = state.origin;
-  elements.theme.value = state.theme;
-  elements.letter.value = state.letter;
+const findEstablishment = (id) =>
+  state.establishments.find((entry) => entry.id === id);
+
+const renderVisits = () => {
+  elements.visitList.innerHTML = "";
+
+  const sortedVisits = state.visits
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+
+  if (!sortedVisits.length) {
+    elements.emptyMessage.style.display = "block";
+    return;
+  }
+
+  elements.emptyMessage.style.display = "none";
+
+  sortedVisits.forEach((visit) => {
+    const establishment = findEstablishment(visit.establishmentId);
+    const item = document.createElement("li");
+    item.className = "visit-item";
+
+    const title = document.createElement("h3");
+    title.textContent = establishment
+      ? `${establishment.name} · ${establishment.type}`
+      : "Unknown establishment";
+
+    const date = document.createElement("p");
+    date.className = "meta";
+    date.textContent = `Visited on ${formatDate(visit.date)}`;
+
+    const liked = document.createElement("p");
+    liked.innerHTML = `<strong>Liked:</strong> ${visit.liked || "—"}`;
+
+    const disliked = document.createElement("p");
+    disliked.innerHTML = `<strong>Did not like:</strong> ${visit.disliked || "—"}`;
+
+    item.append(title, date, liked, disliked);
+    elements.visitList.appendChild(item);
+  });
+};
+
+const addEstablishment = (event) => {
+  event.preventDefault();
+
+  const name = elements.establishmentName.value.trim();
+  const type = elements.establishmentType.value;
+  if (!name) {
+    return;
+  }
+
+  const duplicate = state.establishments.some(
+    (entry) => entry.name.toLowerCase() === name.toLowerCase() && entry.type === type,
+  );
+
+  if (duplicate) {
+    alert("That establishment is already in the list.");
+    return;
+  }
+
+  state.establishments.push({
+    id: createId(),
+    name,
+    type,
+  });
+
+  elements.establishmentForm.reset();
+  elements.establishmentType.value = "Restaurant";
+  syncEstablishmentDropdown();
+  saveState();
+};
+
+const addVisit = (event) => {
+  event.preventDefault();
+
+  if (!state.establishments.length) {
+    alert("Add an establishment first.");
+    return;
+  }
+
+  const establishmentId = elements.visitEstablishment.value;
+  const date = elements.visitDate.value;
+  const liked = elements.likedNotes.value.trim();
+  const disliked = elements.dislikedNotes.value.trim();
+
+  if (!establishmentId || !date) {
+    return;
+  }
+
+  state.visits.push({
+    id: createId(),
+    establishmentId,
+    date,
+    liked,
+    disliked,
+    createdAt: Date.now(),
+  });
+
+  elements.visitForm.reset();
+  elements.visitDate.value = new Date().toISOString().split("T")[0];
+  syncEstablishmentDropdown();
+  renderVisits();
+  saveState();
+};
+
+const clearAllData = () => {
+  const confirmed = confirm("Clear all establishments and visit history?");
+  if (!confirmed) {
+    return;
+  }
+
+  state.establishments = [];
+  state.visits = [];
+  syncEstablishmentDropdown();
+  renderVisits();
+  saveState();
 };
 
 const attachListeners = () => {
-  elements.search.addEventListener("input", (event) => {
-    state.search = event.target.value.trim();
-    render();
-  });
-
-  [
-    [elements.gender, "gender"],
-    [elements.origin, "origin"],
-    [elements.theme, "theme"],
-    [elements.letter, "letter"],
-  ].forEach(([element, key]) => {
-    element.addEventListener("change", (event) => {
-      state[key] = event.target.value;
-      render();
-    });
-  });
-
-  elements.clear.addEventListener("click", () => {
-    state.search = "";
-    state.gender = "All";
-    state.origin = "All";
-    state.theme = "All";
-    state.letter = "All";
-    elements.search.value = "";
-    syncFilters();
-    render();
-  });
+  elements.establishmentForm.addEventListener("submit", addEstablishment);
+  elements.visitForm.addEventListener("submit", addVisit);
+  elements.clearAll.addEventListener("click", clearAllData);
 };
 
-const init = async () => {
-  const response = await fetch("./data/names.json");
-  const data = await response.json();
-  state.data = data;
-
-  const genders = [...new Set(data.map((entry) => entry.gender))].sort();
-  const origins = [...new Set(data.map((entry) => entry.origin))].sort();
-  const themes = [...new Set(data.map((entry) => entry.theme))].sort();
-  const letters = [
-    ...new Set(data.map((entry) => entry.name.charAt(0).toUpperCase())),
-  ].sort();
-
-  buildSelect(elements.gender, genders);
-  buildSelect(elements.origin, origins);
-  buildSelect(elements.theme, themes);
-  buildSelect(elements.letter, letters);
-
+const init = () => {
+  loadState();
+  syncEstablishmentDropdown();
+  renderVisits();
   attachListeners();
-  render();
+  elements.visitDate.value = new Date().toISOString().split("T")[0];
 };
 
 init();

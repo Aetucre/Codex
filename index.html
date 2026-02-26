@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Modern Names Catalog</title>
+    <title>Travel Visit Tracker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,67 +13,67 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app">
+    <main class="app">
       <header class="hero">
-        <div>
-          <p class="eyebrow">20,000 Names — Modern Edition</p>
-          <h1>Explore names by origin, gender, and theme.</h1>
-          <p class="lead">
-            A modern, searchable catalog inspired by 20000-names.com. Filter by
-            origin, gender, or theme to discover the perfect name.
-          </p>
-        </div>
-        <div class="hero-card">
-          <div>
-            <p class="label">Total names</p>
-            <h2 id="total-count">0</h2>
-          </div>
-          <div>
-            <p class="label">Active filters</p>
-            <h2 id="active-count">0</h2>
-          </div>
-        </div>
+        <p class="eyebrow">Trip Journal</p>
+        <h1>Track your hotel and restaurant visits.</h1>
+        <p>
+          Add establishments, choose one from the dropdown, and record each visit with
+          date-based notes on what you liked and disliked.
+        </p>
       </header>
 
-      <section class="controls">
-        <label class="search">
-          <span>Search names</span>
-          <input
-            id="search"
-            type="search"
-            placeholder="Search by name, meaning, or origin"
-            autocomplete="off"
-          />
-        </label>
-        <div class="filter-group">
+      <section class="panel">
+        <h2>Add establishment</h2>
+        <form id="establishment-form" class="grid-form">
           <label>
-            <span>Gender</span>
-            <select id="gender-filter"></select>
+            <span>Name</span>
+            <input id="establishment-name" type="text" placeholder="e.g. Seaside Bistro" required />
           </label>
           <label>
-            <span>Origin</span>
-            <select id="origin-filter"></select>
+            <span>Type</span>
+            <select id="establishment-type" required>
+              <option value="Restaurant">Restaurant</option>
+              <option value="Hotel">Hotel</option>
+            </select>
           </label>
-          <label>
-            <span>Theme</span>
-            <select id="theme-filter"></select>
-          </label>
-          <label>
-            <span>Starts with</span>
-            <select id="letter-filter"></select>
-          </label>
-        </div>
-        <div class="chip-row" id="chip-row"></div>
+          <button type="submit">Add to dropdown</button>
+        </form>
       </section>
 
-      <section class="results">
-        <div class="results-header">
-          <h3 id="results-title">Showing all names</h3>
-          <button class="ghost" id="clear-filters">Clear filters</button>
-        </div>
-        <div id="results" class="results-grid"></div>
+      <section class="panel">
+        <h2>Log visit</h2>
+        <form id="visit-form" class="visit-form">
+          <label>
+            <span>Establishment</span>
+            <select id="visit-establishment" required></select>
+          </label>
+          <label>
+            <span>Visit date</span>
+            <input id="visit-date" type="date" required />
+          </label>
+          <label>
+            <span>What you liked (menu items, accommodations, amenities)</span>
+            <textarea id="liked-notes" rows="3" placeholder="Great pasta, fast check-in, rooftop pool..."></textarea>
+          </label>
+          <label>
+            <span>What you did not like</span>
+            <textarea id="disliked-notes" rows="3" placeholder="Noisy room, slow service..."></textarea>
+          </label>
+          <button type="submit">Save visit</button>
+        </form>
       </section>
-    </div>
+
+      <section class="panel">
+        <div class="results-header">
+          <h2>Visit history</h2>
+          <button id="clear-all" class="ghost" type="button">Clear all data</button>
+        </div>
+        <p id="empty-message" class="empty-message">No visits yet. Add an establishment and log your first visit.</p>
+        <ul id="visit-list" class="visit-list"></ul>
+      </section>
+    </main>
+
     <script src="app.js"></script>
   </body>
 </html>
