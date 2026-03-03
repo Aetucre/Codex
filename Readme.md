@@ -38,3 +38,19 @@ Useful flags:
 - Accepts an export folder, `conversations.json`, or an export `.zip` file.
 - `--show-paths`: print root-to-leaf branch paths so you can see branch topology.
 - `--max-conversations N`: cap output when many matches exist.
+
+
+Branch navigation tips:
+
+- Run in interactive mode to keep the session open and navigate branches:
+  - `python chatgpt_export_reader.py /path/to/export --date-query 050724 --interactive`
+- Navigation commands inside interactive mode:
+  - `list`
+  - `open <conversation_number>`
+  - `regen <conversation_number> <regen_point_number>`
+  - `variant <conversation_number> <regen_point_number> <variant_number>`
+
+Make large exports easier to handle:
+
+- `--export-slim /path/to/slim.json`: writes a compact report (only regen metadata/excerpts).
+- `--export-matches-dir /path/to/folder`: writes each matching conversation to its own JSON file.
