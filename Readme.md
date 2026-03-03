@@ -28,10 +28,13 @@ Use `chatgpt_export_reader.py` to inspect a ChatGPT `conversations.json` export 
 
 ```bash
 python chatgpt_export_reader.py /path/to/export --date-query 050724 --show-paths
+# or run without args to pick a .json/.zip file
+python chatgpt_export_reader.py
 ```
 
 Useful flags:
 
 - `--date-query 050724`: filter conversations by MMDDYY date in conversation/node timestamps.
+- Accepts an export folder, `conversations.json`, or an export `.zip` file.
 - `--show-paths`: print root-to-leaf branch paths so you can see branch topology.
 - `--max-conversations N`: cap output when many matches exist.
